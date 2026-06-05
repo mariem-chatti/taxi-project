@@ -118,7 +118,7 @@ services:
     environment:
       PATH: /opt/spark/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       SPARK_JARS_IVY: /tmp/.ivy2
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "2G", "--cores", "2", "spark://spark-master:7077"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "1G", "--cores", "1", "spark://spark-master:7077"]
     volumes:
       - ./spark:/opt/spark-apps
       - ./data:/opt/spark-data
@@ -131,7 +131,7 @@ services:
     environment:
       PATH: /opt/spark/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       SPARK_JARS_IVY: /tmp/.ivy2
-    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "2G", "--cores", "2", "spark://spark-master:7077"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "1G", "--cores", "1", "spark://spark-master:7077"]
     volumes:
       - ./spark:/opt/spark-apps
       - ./data:/opt/spark-data

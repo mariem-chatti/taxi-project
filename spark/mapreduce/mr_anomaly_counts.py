@@ -23,15 +23,17 @@ def classify_anomaly(row):
     Returns a list of (borough, anomaly_type) pairs — one row can hit
     multiple rules, so we flatMap rather than map.
     """
-    borough = row["pu_borough"] if (row.get("pu_borough")) else "Unknown"
+    # Convert Row to dict for safe .get() access
+    r = row.asDict()
+    borough = r.get("pu_borough") if r.get("pu_borough") else "Unknown"
     anomalies = []
 
-    fare = float(row["fare_amount"] or 0)
-    dist = float(row["trip_distance"] or 0)
-    pax  = int(row["passenger_count"] or 0)
-    tip  = float(row["tip_amount"] or 0)
-    tot  = float(row["total_amount"] or 0)
-    dur  = float(row.get("trip_duration_min") or 0)
+    fare = float(r.get("fare_amount") or 0)
+    dist = float(r.get("trip_distance") or 0)
+    pax  = int(r.get("passenger_count") or 0)
+    tip  = float(r.get("tip_amount") or 0)
+    tot  = float(r.get("total_amount") or 0)
+    dur  = float(r.get("trip_duration_min") or 0)
 
     if fare > 500:
         anomalies.append((borough, "fare_too_high"))
