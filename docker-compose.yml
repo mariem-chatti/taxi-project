@@ -1,0 +1,155 @@
+# ─────────────────────────────────────────────
+#  NYC TAXI BIG DATA PIPELINE
+#  Services: Zookeeper → Kafka → Spark → HDFS → MapReduce
+# ─────────────────────────────────────────────
+
+networks:
+  taxi-net:
+    driver: bridge
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+
+services:
+
+  # ── 1. ZOOKEEPER ─────────────────────────────
+  # Kafka needs Zookeeper to manage brokers and coordinate leader election.
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks: [taxi-net]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+
+  # ── 2. KAFKA BROKER ──────────────────────────
+  # The message bus. Receives raw taxi records from the Python producer
+  # and holds them in topics until Spark consumes them.
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    networks: [taxi-net]
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"        # external (host machine)
+      - "29092:29092"      # internal (between containers)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Two listeners: one for containers, one for your host machine
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  # ── 3. KAFKA UI (optional but very helpful) ──
+  # Visual dashboard to inspect topics and messages in the browser.
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    networks: [taxi-net]
+    depends_on: [kafka]
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # ── 4. HADOOP NAMENODE ────────────────────────
+  # The HDFS master node — manages the filesystem namespace and
+  # knows where every file block is stored across DataNodes.
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    networks: [taxi-net]
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./data:/data                        # mount local data folder into container
+    environment:
+      CLUSTER_NAME: taxi-cluster
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+    ports:
+      - "9870:9870"   # NameNode Web UI
+      - "9000:9000"   # HDFS RPC port
+
+  # ── 5. HADOOP DATANODE ────────────────────────
+  # Stores the actual file blocks. In production you'd have many.
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    networks: [taxi-net]
+    depends_on: [namenode]
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      CORE_CONF_fs_defaultFS: hdfs://namenode:9000
+      SERVICE_PRECONDITION: "namenode:9870"
+    ports:
+      - "9864:9864"   # DataNode Web UI
+
+  # ── 6. SPARK MASTER ───────────────────────────
+  # Coordinates Spark jobs: distributes tasks to workers.
+  spark-master:
+    image: apache/spark:3.4.1
+    container_name: spark-master
+    networks: [taxi-net]
+    environment:
+      PATH: /opt/spark/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      SPARK_JARS_IVY: /tmp/.ivy2
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master"]
+    ports:
+      - "8090:8080"   # Spark Master Web UI (mapped to 8090 to avoid conflict)
+      - "7077:7077"   # Spark master RPC
+    volumes:
+      - ./spark:/opt/spark-apps         # our Spark scripts
+      - ./data:/opt/spark-data          # data files
+
+  # ── 7. SPARK WORKER ───────────────────────────
+  # Executes the actual Spark tasks assigned by the master.
+  spark-worker:
+    image: apache/spark:3.4.1
+    container_name: spark-worker
+    networks: [taxi-net]
+    depends_on: [spark-master]
+    environment:
+      PATH: /opt/spark/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      SPARK_JARS_IVY: /tmp/.ivy2
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "2G", "--cores", "2", "spark://spark-master:7077"]
+    volumes:
+      - ./spark:/opt/spark-apps
+      - ./data:/opt/spark-data
+
+  spark-worker-2:
+    image: apache/spark:3.4.1
+    container_name: spark-worker-2
+    networks: [taxi-net]
+    depends_on: [spark-master]
+    environment:
+      PATH: /opt/spark/bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      SPARK_JARS_IVY: /tmp/.ivy2
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "--memory", "2G", "--cores", "2", "spark://spark-master:7077"]
+    volumes:
+      - ./spark:/opt/spark-apps
+      - ./data:/opt/spark-data
+
+  # ── 8. PYTHON PRODUCER ────────────────────────
+  # Reads the CSV line by line and sends each record to Kafka.
+  # Starts AFTER Kafka is ready (30s sleep in entrypoint).
+  producer:
+    build:
+      context: ./producer
+      dockerfile: Dockerfile
+    container_name: taxi-producer
+    networks: [taxi-net]
+    depends_on: [kafka]
+    volumes:
+      - ./data:/data
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      CSV_FILE: /data/taxi_sample.csv
+      TOPIC_NAME: taxi-raw
+      DELAY_MS: "100"    # milliseconds between messages (controls speed)
