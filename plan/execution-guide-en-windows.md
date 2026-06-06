@@ -153,18 +153,8 @@ docker exec spark-master /opt/spark/bin/spark-submit `
 
 **Wait for the message:** `✅ Spark session started`
 
-### 4.2 Reduce worker resources (if running MapReduce in parallel)
 
-If you need to run MapReduce jobs while streaming is running, reduce worker resources to avoid conflicts:
-
-```powershell
-# Edit docker-compose.yml: spark-worker and spark-worker-2
-# --memory "1G" --cores "1" instead of --memory "2G" --cores "2"
-
-docker compose up -d --force-recreate spark-worker spark-worker-2
-```
-
-### 4.3 Check the web interfaces
+### 4.2 Check the web interfaces
 
 - Spark Master UI: http://localhost:8090
 - HDFS NameNode UI: http://localhost:9870
