@@ -40,11 +40,6 @@ CSV → Kafka Producer → Kafka (taxi-raw) → Spark Structured Streaming
 
 ## Step 1 — Start Docker Infrastructure
 
-### 1.1 Stop services occupying port 9000
-
-```powershell
-docker stop deployment_alliance-minio-1
-```
 
 ### 1.2 Start the 8 containers
 
@@ -145,11 +140,14 @@ docker exec kafka kafka-topics --bootstrap-server kafka:29092 --create --topic t
 ```powershell
 docker exec spark-master /opt/spark/bin/spark-submit `
   --master spark://spark-master:7077 `
+--total-executor-cores 1 `
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1 `
   --conf spark.jars.ivy=/tmp/.ivy2 `
   --conf spark.executor.cores=1 `
   --conf spark.executor.memory=1g `
-  --conf spark.sql.shuffle.partitions=4 `
+  --conf spark.executor.instances=1 `
+  --conf spark.task.cpus=1 `
+  --conf spark.sql.shuffle.partitions=1 `
   /opt/spark-apps/taxi_spark_job.py
 ```
 
